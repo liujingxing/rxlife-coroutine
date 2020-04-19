@@ -1,0 +1,2 @@
+rootProject.name='RxLife-Coroutine'
+include ':app', ':rxlife-coroutine'
