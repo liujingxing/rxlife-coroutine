@@ -7,6 +7,21 @@ dependencies {
    implementation 'com.ljx.rxlife:rxlife-coroutine:2.0.0'
 }
 ```
+**RxHttp&RxLife 交流群：378530627**
+
+**友情提示: RxLife与[RxHttp](https://github.com/liujingxing/RxHttp)搭配使用，协程发请求，简直不要太爽**
+
+# 简介
+
+***RxLife-Coroutine 优势***
+
+- ***开启协程，并自动管理协程生命周期，在页面销毁时，自动关闭协程***
+
+- ***自动捕获协程异常，通过回调可拿到异常信息***
+
+- ***可监听协程开启及结束***
+
+
 
 # 使用
 ## FragmentActivity/Fragment/ViewModel环境下
