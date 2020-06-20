@@ -7,6 +7,7 @@ import java.lang.Object;
 import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
+import java.util.Map;
 import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.Headers;
@@ -14,10 +15,13 @@ import okhttp3.Headers.Builder;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import okhttp3.internal.cache.DiskLruCache;
+import okhttp3.internal.concurrent.TaskRunner;
 import rxhttp.HttpSender;
 import rxhttp.RxHttpPlugins;
 import rxhttp.wrapper.cahce.CacheMode;
 import rxhttp.wrapper.cahce.CacheStrategy;
+import rxhttp.wrapper.cahce.DiskLruCacheFactory;
 import rxhttp.wrapper.callback.Function;
 import rxhttp.wrapper.callback.IConverter;
 import rxhttp.wrapper.parse.Parser;
@@ -31,9 +35,17 @@ import rxhttp.wrapper.parse.Parser;
  */
 @SuppressWarnings("unchecked")
 public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
+  static {
+    DiskLruCacheFactory.factory = (fileSystem, directory, appVersion, valueCount, maxSize) -> {               
+        return new DiskLruCache(fileSystem, directory, appVersion, valueCount, maxSize, TaskRunner.INSTANCE); 
+    };
+  }
+
   protected P param;
 
   protected IConverter converter = RxHttpPlugins.getConverter();
+
+  protected OkHttpClient okClient = HttpSender.getOkHttpClient();
 
   private long breakDownloadOffSize = 0L;
 
@@ -51,6 +63,10 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
   public static void init(OkHttpClient okHttpClient, boolean debug) {
     HttpSender.init(okHttpClient,debug);
+  }
+
+  public static boolean isInit() {
+    return HttpSender.isInit();
   }
 
   /**
@@ -77,8 +93,9 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     RxHttpPlugins.setOnParamAssembly(onParamAssembly);
   }
 
-  public static OkHttpClient getOkHttpClient() {
-    return HttpSender.getOkHttpClient();
+  @Override
+  public OkHttpClient getOkHttpClient() {
+    return okClient;
   }
 
   public P getParam() {
@@ -191,6 +208,16 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
+  public R addAllHeader(Map<String, String> headers) {
+    param.addAllHeader(headers);
+    return (R)this;
+  }
+
+  public R addAllHeader(Headers headers) {
+    param.addAllHeader(headers);
+    return (R)this;
+  }
+
   public R setHeader(String key, String value) {
     param.setHeader(key,value);
     return (R)this;
@@ -258,6 +285,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   }
 
   public String getUrl() {
+    addDefaultDomainIfAbsent(param);
     return param.getUrl();
   }
 
@@ -313,7 +341,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
   public Response execute() throws IOException {
     doOnStart();
-    return HttpSender.execute(param);
+    return newCall().execute();
   }
 
   public <T> T execute(Parser<T> parser) throws IOException {
@@ -379,6 +407,9 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     }
   }
 
+  /**
+   * 通过占位符，将参数与url拼接在一起，使用标准的Java占位符协议
+   */
   private static String format(String url, Object... formatArgs) {
     return formatArgs == null || formatArgs.length == 0 ? url : String.format(url, formatArgs);
   }
