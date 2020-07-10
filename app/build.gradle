@@ -16,7 +16,8 @@ android {
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = [
-                        rxhttp_okhttp: okhttp_version
+                        rxhttp_okhttp: okhttp_version,
+                        rxhttp_rxjava: 'rxjava3'
                 ]
             }
         }
@@ -36,6 +37,9 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
 }
 
 dependencies {
@@ -51,6 +55,15 @@ dependencies {
 
     implementation "com.ljx.rxhttp:rxhttp:${rxhttp_version}"
     kapt "com.ljx.rxhttp:rxhttp-compiler:${rxhttp_version}"
+    implementation "androidx.fragment:fragment-ktx:1.2.5"
+
+    implementation 'io.reactivex.rxjava3:rxjava:3.0.2'
+    implementation 'io.reactivex.rxjava3:rxandroid:3.0.0'
+    implementation 'com.ljx.rxlife3:rxlife-rxjava:3.0.0'
+
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.2.0"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:2.2.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.2.0"
 
     testImplementation 'junit:junit:4.13'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'

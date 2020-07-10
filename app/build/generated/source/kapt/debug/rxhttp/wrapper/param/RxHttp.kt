@@ -1,10 +1,33 @@
 package rxhttp.wrapper.param
 
+import io.reactivex.rxjava3.core.Observable
 import kotlin.Unit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import rxhttp.wrapper.callback.ProgressCallback
 import rxhttp.wrapper.entity.Progress
+import rxhttp.wrapper.parse.SimpleParser
+
+suspend fun <T> Observable<T>.await(): T = suspendCancellableCoroutine { continuation ->
+    val subscribe = subscribe({                      
+        continuation.resume(it)                     
+    }, {                                             
+        continuation.resumeWithException(it)        
+    })                                              
+                                                    
+    continuation.invokeOnCancellation {              
+        subscribe.dispose()                         
+    }                                               
+}                                                   
+
+inline fun <reified T> BaseRxHttp.asList() = asClass<List<T>>()
+
+inline fun <reified K, reified V> BaseRxHttp.asMap() = asClass<Map<K,V>>()
+
+inline fun <reified T> BaseRxHttp.asClass() = asParser(object : SimpleParser<T>() {})
 
 /**
  * 调用此方法监听上传进度                                                    
@@ -12,11 +35,11 @@ import rxhttp.wrapper.entity.Progress
  * @param progress 进度回调  
  * 注意：此方法仅在协程环境下才生效                                         
  */
-fun RxHttpFormParam.upload(coroutine: CoroutineScope? = null, progress: (Progress) -> Unit):
+fun RxHttpFormParam.upload(coroutine: CoroutineScope, progress: suspend (Progress) -> Unit):
     RxHttpFormParam {
   param.setProgressCallback(ProgressCallback { currentProgress, currentSize, totalSize ->
       val p = Progress(currentProgress, currentSize, totalSize)
-      coroutine?.launch { progress(p) } ?: progress(p)
+      coroutine.launch { progress(p) }
   })
   return this
 }

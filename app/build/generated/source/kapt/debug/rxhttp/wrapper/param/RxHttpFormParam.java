@@ -1,12 +1,19 @@
 package rxhttp.wrapper.param;
 
+import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.core.Scheduler;
+import io.reactivex.rxjava3.functions.Consumer;
 import java.io.File;
 import java.lang.Deprecated;
 import java.lang.Object;
+import java.lang.Override;
 import java.lang.String;
 import java.util.List;
 import java.util.Map;
+import rxhttp.wrapper.entity.Progress;
+import rxhttp.wrapper.entity.ProgressT;
 import rxhttp.wrapper.entity.UpFile;
+import rxhttp.wrapper.parse.Parser;
 
 /**
  * Github
@@ -16,6 +23,16 @@ import rxhttp.wrapper.entity.UpFile;
  * https://github.com/liujingxing/okhttp-RxHttp/wiki/更新日志
  */
 public class RxHttpFormParam extends RxHttp<FormParam, RxHttpFormParam> {
+  /**
+   * 用于控制下游回调所在线程(包括进度回调)，仅当{@link progressConsumer}不为 null 时生效
+   */
+  private Scheduler observeOnScheduler;
+
+  /**
+   * 用于监听上传进度回调
+   */
+  private Consumer<Progress> progressConsumer;
+
   public RxHttpFormParam(FormParam param) {
     super(param);
   }
@@ -127,5 +144,45 @@ public class RxHttpFormParam extends RxHttp<FormParam, RxHttpFormParam> {
   public RxHttpFormParam setUploadMaxLength(long maxLength) {
     param.setUploadMaxLength(maxLength);
     return this;
+  }
+
+  public RxHttpFormParam upload(Consumer<Progress> progressConsumer) {
+    return upload(progressConsumer, null);
+  }
+
+  /**
+   * @deprecated please user {@link #upload(Scheduler,Consumer)} instead
+   */
+  @Deprecated
+  public RxHttpFormParam upload(Consumer<Progress> progressConsumer, Scheduler observeOnScheduler) {
+    return upload(observeOnScheduler, progressConsumer);
+  }
+
+  /**
+   * 监听上传进度
+   * @param progressConsumer   进度回调
+   * @param observeOnScheduler 用于控制下游回调所在线程(包括进度回调) ，仅当 progressConsumer 不为 null 时生效
+   */
+  public RxHttpFormParam upload(Scheduler observeOnScheduler, Consumer<Progress> progressConsumer) {
+    this.progressConsumer = progressConsumer;
+    this.observeOnScheduler = observeOnScheduler;
+    return this;
+  }
+
+  @Override
+  public <T> Observable<T> asParser(Parser<T> parser) {
+        if (progressConsumer == null) {
+            return super.asParser(parser);
+        }
+        doOnStart();
+        Observable<Progress> observable = new ObservableUpload<T>(okClient, param, parser);
+        if (scheduler != null)
+            observable = observable.subscribeOn(scheduler);
+        if (observeOnScheduler != null) {
+            observable = observable.observeOn(observeOnScheduler);
+        }
+        return observable.doOnNext(progressConsumer)
+            .filter(progress -> progress instanceof ProgressT)
+            .map(progress -> ((ProgressT<T>) progress).getResult());
   }
 }

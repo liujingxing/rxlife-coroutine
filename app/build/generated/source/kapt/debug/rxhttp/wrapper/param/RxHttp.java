@@ -1,6 +1,11 @@
 package rxhttp.wrapper.param;
 
 import com.example.coroutine.Url;
+import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.core.Scheduler;
+import io.reactivex.rxjava3.disposables.Disposable;
+import io.reactivex.rxjava3.functions.Consumer;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import java.io.IOException;
 import java.lang.Class;
 import java.lang.Object;
@@ -24,6 +29,8 @@ import rxhttp.wrapper.cahce.CacheStrategy;
 import rxhttp.wrapper.cahce.DiskLruCacheFactory;
 import rxhttp.wrapper.callback.Function;
 import rxhttp.wrapper.callback.IConverter;
+import rxhttp.wrapper.entity.Progress;
+import rxhttp.wrapper.entity.ProgressT;
 import rxhttp.wrapper.parse.Parser;
 
 /**
@@ -42,6 +49,11 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   }
 
   protected P param;
+
+  /**
+   * The request is executed on the IO thread by default
+   */
+  protected Scheduler scheduler = Schedulers.io();
 
   protected IConverter converter = RxHttpPlugins.getConverter();
 
@@ -96,6 +108,14 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   @Override
   public OkHttpClient getOkHttpClient() {
     return okClient;
+  }
+
+  public static void dispose(Disposable disposable) {
+    if (!isDisposed(disposable)) disposable.dispose();
+  }
+
+  public static boolean isDisposed(Disposable disposable) {
+    return disposable == null || disposable.isDisposed();
   }
 
   public P getParam() {
@@ -368,6 +388,76 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   void doOnStart() {
     setConverter(param);
     addDefaultDomainIfAbsent(param);
+  }
+
+  public R subscribeOn(Scheduler scheduler) {
+    this.scheduler=scheduler;
+    return (R)this;
+  }
+
+  /**
+   * 设置在当前线程发请求
+   */
+  public R subscribeOnCurrent() {
+    this.scheduler=null;
+    return (R)this;
+  }
+
+  public R subscribeOnIo() {
+    this.scheduler=Schedulers.io();
+    return (R)this;
+  }
+
+  public R subscribeOnComputation() {
+    this.scheduler=Schedulers.computation();
+    return (R)this;
+  }
+
+  public R subscribeOnNewThread() {
+    this.scheduler=Schedulers.newThread();
+    return (R)this;
+  }
+
+  public R subscribeOnSingle() {
+    this.scheduler=Schedulers.single();
+    return (R)this;
+  }
+
+  public R subscribeOnTrampoline() {
+    this.scheduler=Schedulers.trampoline();
+    return (R)this;
+  }
+
+  @Override
+  public <T> Observable<T> asParser(Parser<T> parser) {
+        doOnStart();
+        Observable<T> observable = new ObservableHttp<T>(okClient, param, parser);
+        if (scheduler != null) {
+            observable = observable.subscribeOn(scheduler);
+        }
+        return observable;
+  }
+
+  /**
+   * 监听下载进度时，调用此方法                                                                 
+   * @param destPath           文件存储路径                                              
+   * @param observeOnScheduler 控制回调所在线程，传入null，则默认在请求所在线程(子线程)回调                   
+   * @param progressConsumer   进度回调                                                
+   * @return Observable
+   */
+  @Override
+  public Observable<String> asDownload(String destPath, Scheduler observeOnScheduler,
+      Consumer<Progress> progressConsumer) {
+        doOnStart();
+        Observable<Progress> observable = new ObservableDownload(okClient, param, destPath, breakDownloadOffSize);
+        if (scheduler != null)
+            observable = observable.subscribeOn(scheduler);
+        if (observeOnScheduler != null) {
+            observable = observable.observeOn(observeOnScheduler);
+        }
+        return observable.doOnNext(progressConsumer)
+            .filter(progress -> progress instanceof ProgressT)
+            .map(progress -> ((ProgressT<String>) progress).getResult());
   }
 
   /**
