@@ -63,8 +63,12 @@ class RxLifeScope() : Closeable {
                     block()
                 }
             } catch (e: Throwable) {
-                if (onError != null) {
-                    onError(e)
+                if (onError != null && isActive) {
+                    try {
+                        onError(e)
+                    } catch (e: Throwable) {
+                        e.printStackTrace()
+                    }
                 } else {
                     e.printStackTrace()
                 }
