@@ -1,6 +1,8 @@
 package rxhttp.wrapper.param;
 
+import android.content.Context;
 import android.graphics.Bitmap;
+import android.net.Uri;
 
 import java.lang.reflect.Type;
 import java.util.List;
@@ -9,18 +11,20 @@ import java.util.Map;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.functions.Consumer;
+import io.reactivex.rxjava3.plugins.RxJavaPlugins;
 import okhttp3.Headers;
 import okhttp3.Response;
 import rxhttp.IRxHttp;
 import rxhttp.wrapper.OkHttpCompat;
-import rxhttp.wrapper.annotations.Nullable;
+import rxhttp.wrapper.callback.OutputStreamFactory;
 import rxhttp.wrapper.entity.ParameterizedTypeImpl;
 import rxhttp.wrapper.entity.Progress;
 import rxhttp.wrapper.parse.BitmapParser;
-import rxhttp.wrapper.parse.DownloadParser;
 import rxhttp.wrapper.parse.OkResponseParser;
 import rxhttp.wrapper.parse.Parser;
 import rxhttp.wrapper.parse.SimpleParser;
+import rxhttp.wrapper.parse.StreamParser;
+import rxhttp.wrapper.utils.LogUtil;
 
 /**
  * 本类存放asXxx方法，如果依赖了RxJava的话
@@ -30,36 +34,22 @@ import rxhttp.wrapper.parse.SimpleParser;
  */
 public abstract class BaseRxHttp implements IRxHttp {
 
-    public abstract <T> Observable<T> asParser(Parser<T> parser);
+    static {                   
+        Consumer<? super Throwable> errorHandler = RxJavaPlugins.getErrorHandler();
+        if (errorHandler == null) {                                                
+            /*                                                                     
+            RxJava2的一个重要的设计理念是：不吃掉任何一个异常, 即抛出的异常无人处理，便会导致程序崩溃                      
+            这就会导致一个问题，当RxJava2“downStream”取消订阅后，“upStream”仍有可能抛出异常，                
+            这时由于已经取消订阅，“downStream”无法处理异常，此时的异常无人处理，便会导致程序崩溃                       
+            */                                                                     
+            RxJavaPlugins.setErrorHandler(LogUtil::log);                           
+        }                                                                          
+    }                                                                              
+
+    public abstract <T> Observable<T> asParser(Parser<T> parser, Scheduler scheduler, Consumer<Progress> progressConsumer);
     
-    /**                                                           
-     * 监听下载进度时，调用此方法                                              
-     *                                                                                                          
-     * @param destPath           文件存储路径                                                                         
-     * @param observeOnScheduler 控制回调所在线程，传入null，则默认在请求所在线程(子线程)回调                                              
-     * @param progressConsumer   进度回调                                                                           
-     * @return Observable                                                                                       
-     */                                                                                                          
-    public abstract Observable<String> asDownload(String destPath,
-                                                  @Nullable Scheduler observeOnScheduler,
-                                                  Consumer<Progress> progressConsumer);      
-
-    /**
-     * @deprecated please user {@link BaseRxHttp#asDownload(String,Scheduler,Consumer)} instead
-     */
-    @Deprecated
-    public final Observable<String> asDownload(String destPath,
-                                         Consumer<Progress> progressConsumer,
-                                         @Nullable Scheduler observeOnScheduler) {
-        return asDownload(destPath, observeOnScheduler, progressConsumer);                                          
-    }
-
-    /**
-     * @deprecated please user {@link BaseRxHttp#asClass(Class)} instead
-     */
-    @Deprecated
-    public final <T> Observable<T> asObject(Class<T> type) {
-        return asClass(type);
+    public <T> Observable<T> asParser(Parser<T> parser) {
+        return asParser(parser, null, null);
     }
 
     public final <T> Observable<T> asClass(Class<T> type) {
@@ -132,12 +122,26 @@ public abstract class BaseRxHttp implements IRxHttp {
     }
 
     public final Observable<String> asDownload(String destPath) {
-        return asParser(new DownloadParser(destPath));
+        return asDownload(destPath, null, null);
     }
 
     public final Observable<String> asDownload(String destPath,
                                                Consumer<Progress> progressConsumer) {
         return asDownload(destPath, null, progressConsumer);
     }
-
+    
+    public final Observable<String> asDownload(String destPath, Scheduler scheduler,
+                                               Consumer<Progress> progressConsumer) {
+        return asParser(StreamParser.get(destPath), scheduler, progressConsumer);
+    }
+    
+    public final Observable<Uri> asDownload(Context context, Uri uri, Scheduler scheduler,    
+                                               Consumer<Progress> progressConsumer) {            
+        return asParser(StreamParser.get(context, uri), scheduler, progressConsumer);
+    }                                                                                            
+    
+    public final <T> Observable<T> asDownload(OutputStreamFactory<T> osFactory, Scheduler scheduler,
+                                               Consumer<Progress> progressConsumer) {
+        return asParser(new StreamParser<T>(osFactory), scheduler, progressConsumer);
+    }
 }

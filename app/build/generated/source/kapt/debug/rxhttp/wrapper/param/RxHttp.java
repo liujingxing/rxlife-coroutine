@@ -5,11 +5,10 @@ import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.functions.Consumer;
-import io.reactivex.rxjava3.schedulers.Schedulers;
 import java.io.IOException;
 import java.lang.Class;
+import java.lang.Deprecated;
 import java.lang.Object;
-import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
 import java.lang.reflect.Type;
@@ -32,11 +31,14 @@ import rxhttp.wrapper.cahce.CacheStrategy;
 import rxhttp.wrapper.cahce.DiskLruCacheFactory;
 import rxhttp.wrapper.callback.Function;
 import rxhttp.wrapper.callback.IConverter;
+import rxhttp.wrapper.entity.DownloadOffSize;
 import rxhttp.wrapper.entity.ParameterizedTypeImpl;
 import rxhttp.wrapper.entity.Progress;
-import rxhttp.wrapper.entity.ProgressT;
+import rxhttp.wrapper.intercept.CacheInterceptor;
 import rxhttp.wrapper.parse.Parser;
 import rxhttp.wrapper.parse.SimpleParser;
+import rxhttp.wrapper.utils.LogTime;
+import rxhttp.wrapper.utils.LogUtil;
 
 /**
  * Github
@@ -61,16 +63,15 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
   private int writeTimeoutMillis;
 
+  private OkHttpClient realOkClient;
+
   private OkHttpClient okClient = HttpSender.getOkHttpClient();
 
-  /**
-   * The request is executed on the IO thread by default
-   */
-  protected Scheduler scheduler = Schedulers.io();
+  protected boolean isAsync = true;
 
   protected IConverter converter = RxHttpPlugins.getConverter();
 
-  private long breakDownloadOffSize = 0L;
+  public Request request;
 
   protected RxHttp(P param) {
     this.param = param;
@@ -112,7 +113,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
    * 设置统一公共参数回调接口,通过该接口,可添加公共参数/请求头，每次请求前会回调该接口
    * 若部分接口不需要添加公共参数,发请求前，调用{@link #setAssemblyEnabled(boolean)}方法设置false即可
    */
-  public static void setOnParamAssembly(Function<Param, Param> onParamAssembly) {
+  public static void setOnParamAssembly(Function<Param<?>, Param<?>> onParamAssembly) {
     RxHttpPlugins.setOnParamAssembly(onParamAssembly);
   }
 
@@ -131,24 +132,33 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
-  @Override
   public OkHttpClient getOkHttpClient() {
-        final OkHttpClient okHttpClient = okClient;
-        OkHttpClient.Builder builder = null;
-        if (connectTimeoutMillis != 0) {
-          if (builder == null) builder = okHttpClient.newBuilder();
-          builder.connectTimeout(connectTimeoutMillis, TimeUnit.MILLISECONDS);
-        }
-        if (readTimeoutMillis != 0) {
-          if (builder == null) builder = okHttpClient.newBuilder();
-          builder.readTimeout(readTimeoutMillis, TimeUnit.MILLISECONDS);
-        }
+    if (realOkClient != null) return realOkClient;
+    final OkHttpClient okHttpClient = okClient;
+    OkHttpClient.Builder builder = null;
 
-        if (writeTimeoutMillis != 0) {
-          if (builder == null) builder = okHttpClient.newBuilder();
-          builder.writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS);
-        }
-        return builder != null ? builder.build() : okHttpClient;
+    if (connectTimeoutMillis != 0) {
+      if (builder == null) builder = okHttpClient.newBuilder();
+      builder.connectTimeout(connectTimeoutMillis, TimeUnit.MILLISECONDS);
+    }
+
+    if (readTimeoutMillis != 0) {
+      if (builder == null) builder = okHttpClient.newBuilder();
+      builder.readTimeout(readTimeoutMillis, TimeUnit.MILLISECONDS);
+    }
+
+    if (writeTimeoutMillis != 0) {
+      if (builder == null) builder = okHttpClient.newBuilder();
+      builder.writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS);
+    }
+
+    if (param.getCacheMode() != CacheMode.ONLY_NETWORK) {                      
+      if (builder == null) builder = okHttpClient.newBuilder();              
+      builder.addInterceptor(new CacheInterceptor(param.getCacheStrategy()));
+    }
+                                                                            
+    realOkClient = builder != null ? builder.build() : okHttpClient;
+    return realOkClient;
   }
 
   public static void dispose(Disposable disposable) {
@@ -254,6 +264,23 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
+  public R add(String key, Object value) {
+    param.add(key,value);
+    return (R)this;
+  }
+
+  public R add(String key, Object value, boolean isAdd) {
+    if(isAdd) {
+      param.add(key,value);
+    }
+    return (R)this;
+  }
+
+  public R addAll(Map<String, ?> map) {
+    param.addAll(map);
+    return (R)this;
+  }
+
   public R addHeader(String line) {
     param.addHeader(line);
     return (R)this;
@@ -312,14 +339,10 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
    * @param connectLastProgress 是否衔接上次的下载进度，该参数仅在带进度断点下载时生效
    */
   public R setRangeHeader(long startIndex, long endIndex, boolean connectLastProgress) {
-    param.setRangeHeader(startIndex,endIndex);
-    if(connectLastProgress) breakDownloadOffSize = startIndex;
-    return (R)this;
-  }
-
-  @Override
-  public long getBreakDownloadOffSize() {
-    return breakDownloadOffSize;
+    param.setRangeHeader(startIndex, endIndex);                         
+    if (connectLastProgress)                                            
+      param.tag(DownloadOffSize.class, new DownloadOffSize(startIndex));
+    return (R) this;                                                    
   }
 
   public R removeAllHeader(String key) {
@@ -409,7 +432,6 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
-  @Override
   public Response execute() throws IOException {
     return newCall().execute();
   }
@@ -431,96 +453,58 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return execute(new SimpleParser<T>(type));
   }
 
-  public Call newCall() {
-    return newCall(getOkHttpClient());
+  public final Call newCall() {
+    Request request = buildRequest();
+    OkHttpClient okClient = getOkHttpClient();
+    return okClient.newCall(request);
   }
 
-  public Call newCall(OkHttpClient okHttp) {
-    return HttpSender.newCall(okHttp, buildRequest());
-  }
-
-  @Override
   public final Request buildRequest() {
-    doOnStart();
-    return param.buildRequest();
+    if (request == null) {
+        doOnStart();
+        request = param.buildRequest();
+    }
+    if (LogUtil.isDebug()) {
+        request = request.newBuilder()
+            .tag(LogTime.class, new LogTime())
+            .build();
+    }
+    return request;
   }
 
   /**
    * 请求开始前内部调用，用于添加默认域名等操作
    */
-  void doOnStart() {
+  private final void doOnStart() {
     setConverter(param);
     addDefaultDomainIfAbsent(param);
   }
 
-  public R subscribeOn(Scheduler scheduler) {
-    this.scheduler=scheduler;
-    return (R)this;
-  }
-
   /**
-   * 设置在当前线程发请求
+   * @deprecated please user {@link #setSync()} instead
    */
+  @Deprecated
   public R subscribeOnCurrent() {
-    this.scheduler=null;
-    return (R)this;
-  }
-
-  public R subscribeOnIo() {
-    this.scheduler=Schedulers.io();
-    return (R)this;
-  }
-
-  public R subscribeOnComputation() {
-    this.scheduler=Schedulers.computation();
-    return (R)this;
-  }
-
-  public R subscribeOnNewThread() {
-    this.scheduler=Schedulers.newThread();
-    return (R)this;
-  }
-
-  public R subscribeOnSingle() {
-    this.scheduler=Schedulers.single();
-    return (R)this;
-  }
-
-  public R subscribeOnTrampoline() {
-    this.scheduler=Schedulers.trampoline();
-    return (R)this;
-  }
-
-  @Override
-  public <T> Observable<T> asParser(Parser<T> parser) {
-        doOnStart();
-        Observable<T> observable = new ObservableHttp<T>(getOkHttpClient(), param, parser);
-        if (scheduler != null) {
-            observable = observable.subscribeOn(scheduler);
-        }
-        return observable;
+    return setSync();
   }
 
   /**
-   * 监听下载进度时，调用此方法                                                                 
-   * @param destPath           文件存储路径                                              
-   * @param observeOnScheduler 控制回调所在线程，传入null，则默认在请求所在线程(子线程)回调                   
-   * @param progressConsumer   进度回调                                                
-   * @return Observable
+   * sync request 
    */
-  @Override
-  public Observable<String> asDownload(String destPath, Scheduler observeOnScheduler,
+  public R setSync() {
+    isAsync = false;
+    return (R)this;
+  }
+
+  public <T> Observable<T> asParser(Parser<T> parser, Scheduler scheduler,
       Consumer<Progress> progressConsumer) {
-        doOnStart();
-        Observable<Progress> observable = new ObservableDownload(getOkHttpClient(), param, destPath, breakDownloadOffSize);
-        if (scheduler != null)
-            observable = observable.subscribeOn(scheduler);
-        if (observeOnScheduler != null) {
-            observable = observable.observeOn(observeOnScheduler);
-        }
-        return observable.doOnNext(progressConsumer)
-            .filter(progress -> progress instanceof ProgressT)
-            .map(progress -> ((ProgressT<String>) progress).getResult());
+    ObservableCall observableCall;                                      
+    if (isAsync) {                                                      
+      observableCall = new ObservableCallEnqueue(this);                 
+    } else {                                                            
+      observableCall = new ObservableCallExecute(this);                 
+    }                                                                   
+    return observableCall.asParser(parser, scheduler, progressConsumer);
   }
 
   /**

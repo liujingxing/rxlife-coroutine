@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
 import androidx.lifecycle.rxLifeScope
 import com.example.coroutine.databinding.ActivityMainBinding
+import kotlinx.coroutines.Dispatchers
 import rxhttp.toDownload
 import rxhttp.wrapper.param.RxHttp
 
@@ -26,7 +27,7 @@ class MainActivity : AppCompatActivity() {
             val destPath = externalCacheDir.toString() + "/" + System.currentTimeMillis() + ".apk"
             val result = RxHttp.get("/miaolive/Miaolive.apk")
                 .setDomainToUpdateIfAbsent() //使用指定的域名
-                .toDownload(destPath, this) {
+                .toDownload(destPath, Dispatchers.Main) {
                     //下载进度回调,0-100，仅在进度有更新时才会回调，最多回调101次，最后一次回调文件存储路径
                     val currentProgress = it.progress //当前进度 0-100
                     val currentSize = it.currentSize //当前已下载的字节大小
