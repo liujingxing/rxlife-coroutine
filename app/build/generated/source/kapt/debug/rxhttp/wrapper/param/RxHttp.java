@@ -12,7 +12,10 @@ import java.lang.Object;
 import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
+import java.lang.reflect.Type;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.Headers;
@@ -29,9 +32,11 @@ import rxhttp.wrapper.cahce.CacheStrategy;
 import rxhttp.wrapper.cahce.DiskLruCacheFactory;
 import rxhttp.wrapper.callback.Function;
 import rxhttp.wrapper.callback.IConverter;
+import rxhttp.wrapper.entity.ParameterizedTypeImpl;
 import rxhttp.wrapper.entity.Progress;
 import rxhttp.wrapper.entity.ProgressT;
 import rxhttp.wrapper.parse.Parser;
+import rxhttp.wrapper.parse.SimpleParser;
 
 /**
  * Github
@@ -50,14 +55,20 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
   protected P param;
 
+  private int connectTimeoutMillis;
+
+  private int readTimeoutMillis;
+
+  private int writeTimeoutMillis;
+
+  private OkHttpClient okClient = HttpSender.getOkHttpClient();
+
   /**
    * The request is executed on the IO thread by default
    */
   protected Scheduler scheduler = Schedulers.io();
 
   protected IConverter converter = RxHttpPlugins.getConverter();
-
-  protected OkHttpClient okClient = HttpSender.getOkHttpClient();
 
   private long breakDownloadOffSize = 0L;
 
@@ -105,9 +116,39 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     RxHttpPlugins.setOnParamAssembly(onParamAssembly);
   }
 
+  public R connectTimeout(int connectTimeout) {
+    connectTimeoutMillis = connectTimeout;
+    return (R)this;
+  }
+
+  public R readTimeout(int readTimeout) {
+    readTimeoutMillis = readTimeout;
+    return (R)this;
+  }
+
+  public R writeTimeout(int writeTimeout) {
+    writeTimeoutMillis = writeTimeout;
+    return (R)this;
+  }
+
   @Override
   public OkHttpClient getOkHttpClient() {
-    return okClient;
+        final OkHttpClient okHttpClient = okClient;
+        OkHttpClient.Builder builder = null;
+        if (connectTimeoutMillis != 0) {
+          if (builder == null) builder = okHttpClient.newBuilder();
+          builder.connectTimeout(connectTimeoutMillis, TimeUnit.MILLISECONDS);
+        }
+        if (readTimeoutMillis != 0) {
+          if (builder == null) builder = okHttpClient.newBuilder();
+          builder.readTimeout(readTimeoutMillis, TimeUnit.MILLISECONDS);
+        }
+
+        if (writeTimeoutMillis != 0) {
+          if (builder == null) builder = okHttpClient.newBuilder();
+          builder.writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS);
+        }
+        return builder != null ? builder.build() : okHttpClient;
   }
 
   public static void dispose(Disposable disposable) {
@@ -127,6 +168,15 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
+  /**
+   * For example:
+   *                                          
+   * ```                                                  
+   * RxHttp.get("/service/%1$s/...?pageSize=%2$s", 1, 20)   
+   *     .asString()                                      
+   *     .subscribe()                                     
+   * ```                                                  
+   */
   public static RxHttpNoBodyParam get(String url, Object... formatArgs) {
     return with(Param.get(format(url, formatArgs)));
   }
@@ -359,13 +409,26 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
+  @Override
   public Response execute() throws IOException {
-    doOnStart();
     return newCall().execute();
   }
 
   public <T> T execute(Parser<T> parser) throws IOException {
     return parser.onParse(execute());
+  }
+
+  public String executeString() throws IOException {
+    return executeClass(String.class);
+  }
+
+  public <T> List<T> executeList(Class<T> type) throws IOException {
+    Type tTypeList = ParameterizedTypeImpl.get(List.class, type);
+    return execute(new SimpleParser<List<T>>(tTypeList));
+  }
+
+  public <T> T executeClass(Class<T> type) throws IOException {
+    return execute(new SimpleParser<T>(type));
   }
 
   public Call newCall() {
@@ -431,7 +494,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   @Override
   public <T> Observable<T> asParser(Parser<T> parser) {
         doOnStart();
-        Observable<T> observable = new ObservableHttp<T>(okClient, param, parser);
+        Observable<T> observable = new ObservableHttp<T>(getOkHttpClient(), param, parser);
         if (scheduler != null) {
             observable = observable.subscribeOn(scheduler);
         }
@@ -449,7 +512,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   public Observable<String> asDownload(String destPath, Scheduler observeOnScheduler,
       Consumer<Progress> progressConsumer) {
         doOnStart();
-        Observable<Progress> observable = new ObservableDownload(okClient, param, destPath, breakDownloadOffSize);
+        Observable<Progress> observable = new ObservableDownload(getOkHttpClient(), param, destPath, breakDownloadOffSize);
         if (scheduler != null)
             observable = observable.subscribeOn(scheduler);
         if (observeOnScheduler != null) {
@@ -498,7 +561,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   }
 
   /**
-   * 通过占位符，将参数与url拼接在一起，使用标准的Java占位符协议
+   * Returns a formatted string using the specified format string and arguments.
    */
   private static String format(String url, Object... formatArgs) {
     return formatArgs == null || formatArgs.length == 0 ? url : String.format(url, formatArgs);
