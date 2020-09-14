@@ -4,7 +4,7 @@
 ```java
 dependencies {
    //管理协程生命周期，页面销毁，自动关闭协程
-   implementation 'com.ljx.rxlife:rxlife-coroutine:2.0.0'
+   implementation 'com.ljx.rxlife:rxlife-coroutine:2.0.1'
 }
 ```
 **RxHttp&RxLife 交流群：378530627**
@@ -59,6 +59,14 @@ val job = RxLifeScope().launch({
 job.cancel()
 ```
 以上代码使用`RxLifeScope()`手动创建了RxLifeScope对象，这种方式，我们需要在合适的时机，拿到`Job`对象，关闭协程
+
+# 更新日志
+
+### v2.0.1 (2020-09-14)
+
+- 修改：协程被关闭后，若有异常，不再走失败回调
+
+- 修复：捕获失败回调里的异常，并打印日志
 
 
 # Licenses
