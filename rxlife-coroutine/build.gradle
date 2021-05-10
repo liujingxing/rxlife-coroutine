@@ -3,6 +3,8 @@ plugins {
     id 'kotlin-android'
     id 'maven-publish'
 }
+group = 'com.github.liujingxing'
+version = '1.0'
 
 android {
     compileSdkVersion 29
