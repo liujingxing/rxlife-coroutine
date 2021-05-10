@@ -1,8 +1,10 @@
 package rxhttp.wrapper.param;
 
-import java.lang.Object;
-import java.lang.String;
 import java.util.List;
+import java.util.Map;
+
+import rxhttp.wrapper.annotations.NonNull;
+import rxhttp.wrapper.param.NoBodyParam;
 
 /**
  * Github
@@ -12,40 +14,38 @@ import java.util.List;
  * https://github.com/liujingxing/okhttp-RxHttp/wiki/更新日志
  */
 public class RxHttpNoBodyParam extends RxHttp<NoBodyParam, RxHttpNoBodyParam> {
-  public RxHttpNoBodyParam(NoBodyParam param) {
-    super(param);
-  }
+    public RxHttpNoBodyParam(NoBodyParam param) {
+        super(param);
+    }
+    
+    public RxHttpNoBodyParam add(String key, Object value) {
+        return addQuery(key, value);
+    }
+    
+    public RxHttpNoBodyParam add(String key, Object value, boolean isAdd) {
+        if (isAdd) {
+            addQuery(key, value);
+        }
+        return this;
+    }
+    
+    public RxHttpNoBodyParam addAll(Map<String, ?> map) {
+        return addAllQuery(map);
+    }
 
-  public RxHttpNoBodyParam addEncoded(String key, Object value) {
-    param.addEncoded(key,value);
-    return this;
-  }
+    public RxHttpNoBodyParam addEncoded(String key, Object value) {
+        return addEncodedQuery(key, value);
+    }
+    
+    public RxHttpNoBodyParam addAllEncoded(@NonNull Map<String, ?> map) {
+        return addAllEncodedQuery(map);
+    }
 
-  public RxHttpNoBodyParam removeAllBody() {
-    param.removeAllBody();
-    return this;
-  }
+    public RxHttpNoBodyParam set(String key, Object value) {
+        return setQuery(key, value);
+    }
 
-  public RxHttpNoBodyParam removeAllBody(String key) {
-    param.removeAllBody(key);
-    return this;
-  }
-
-  public RxHttpNoBodyParam set(String key, Object value) {
-    param.set(key,value);
-    return this;
-  }
-
-  public RxHttpNoBodyParam setEncoded(String key, Object value) {
-    param.setEncoded(key,value);
-    return this;
-  }
-
-  public Object queryValue(String key) {
-    return param.queryValue(key);
-  }
-
-  public List<Object> queryValues(String key) {
-    return param.queryValues(key);
-  }
+    public RxHttpNoBodyParam setEncoded(String key, Object value) {
+        return setEncodedQuery(key, value); 
+    }
 }

@@ -21,7 +21,7 @@ inline fun <reified T> BaseRxHttp.asClass() = asParser(object : SimpleParser<T>(
  * @param coroutine  CoroutineScope对象，用于开启协程回调进度，进度回调所在线程取决于协程所在线程
  * @param progress 进度回调  
  */
-fun <P : BodyParam<P>, R : RxHttpBodyParam<P, R>> RxHttpBodyParam<P,
+fun <P : AbstractBodyParam<P>, R : RxHttpAbstractBodyParam<P, R>> RxHttpAbstractBodyParam<P,
     R>.upload(coroutine: CoroutineScope, progress: suspend (Progress) -> Unit): R {
   param.setProgressCallback {
       coroutine.launch { progress(it) }

@@ -1,68 +1,74 @@
 package rxhttp.wrapper.param;
 
-import io.reactivex.rxjava3.core.Observable;
-import io.reactivex.rxjava3.core.Scheduler;
-import io.reactivex.rxjava3.functions.Consumer;
-import rxhttp.wrapper.entity.Progress;
+import android.content.Context;
+import android.net.Uri;
+
+import rxhttp.wrapper.annotations.Nullable;
 import rxhttp.wrapper.param.BodyParam;
-import rxhttp.wrapper.parse.Parser;
+
+import java.io.File;
+
+import okhttp3.MediaType;
+import okhttp3.RequestBody;
+import okio.ByteString;
 
 /**
  * Github
  * https://github.com/liujingxing/RxHttp
  * https://github.com/liujingxing/RxLife
- * https://github.com/liujingxing/okhttp-RxHttp/wiki/FAQ
- * https://github.com/liujingxing/okhttp-RxHttp/wiki/更新日志
  */
-@SuppressWarnings("unchecked")
-public class RxHttpBodyParam<P extends BodyParam<P>, R extends RxHttpBodyParam<P, R>> extends RxHttp<P, R> {
-
-  //Controls the downstream callback thread
-  private Scheduler observeOnScheduler;
-
-  //Upload progress callback
-  private Consumer<Progress> progressConsumer;
-
-  protected RxHttpBodyParam(P param) {
-    super(param);
-  }
-
-  public final R setUploadMaxLength(long maxLength) {
-    param.setUploadMaxLength(maxLength);
-    return (R) this;
-  }
-
-  public final R upload(Consumer<Progress> progressConsumer) {
-    return upload(null, progressConsumer);
-  }
-
-  /**
-   * @param progressConsumer   Upload progress callback
-   * @param observeOnScheduler Controls the downstream callback thread
-   */
-  public final R upload(Scheduler observeOnScheduler, Consumer<Progress> progressConsumer) {
-    this.progressConsumer = progressConsumer;
-    this.observeOnScheduler = observeOnScheduler;
-    return (R) this;
-  }
-  
-  @Override
-  public final <T> Observable<T> asParser(Parser<T> parser) {
-    return asParser(parser, observeOnScheduler, progressConsumer);
-  }
-  
-  @Override
-  public final <T> Observable<T> asParser(Parser<T> parser, Scheduler scheduler,
-      Consumer<Progress> progressConsumer) {
-    if (progressConsumer == null) {                                             
-      return super.asParser(parser, scheduler, null);                                            
-    }  
-    ObservableCall observableCall;                                      
-    if (isAsync) {                                                      
-      observableCall = new ObservableCallEnqueue(this, true);                 
-    } else {                                                            
-      observableCall = new ObservableCallExecute(this, true);                 
-    }                                                                   
-    return observableCall.asParser(parser, scheduler, progressConsumer);
-  }
+public class RxHttpBodyParam extends RxHttpAbstractBodyParam<BodyParam, RxHttpBodyParam> {
+    public RxHttpBodyParam(BodyParam param) {
+        super(param);
+    }
+    
+    public RxHttpBodyParam setBody(RequestBody requestBody) {
+        param.setBody(requestBody);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(String content, @Nullable MediaType mediaType) {
+        param.setBody(content, mediaType);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(ByteString content, @Nullable MediaType mediaType) {
+        param.setBody(content, mediaType);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(byte[] content, @Nullable MediaType mediaType) {
+        param.setBody(content, mediaType);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(byte[] content, @Nullable MediaType mediaType, int offset, int byteCount) {
+        param.setBody(content, mediaType, offset, byteCount);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(File file) {
+        param.setBody(file);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(File file, @Nullable MediaType mediaType) {
+        param.setBody(file, mediaType);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(Uri uri, Context context) {
+        param.setBody(uri, context);
+        return this;
+    }
+    
+    public RxHttpBodyParam setBody(Uri uri, Context context, @Nullable MediaType contentType) {
+        param.setBody(uri, context, contentType);
+        return this;
+    }
+    
+    public RxHttpBodyParam setJsonBody(Object object) {
+        param.setJsonBody(object);
+        return this;
+    }
 }

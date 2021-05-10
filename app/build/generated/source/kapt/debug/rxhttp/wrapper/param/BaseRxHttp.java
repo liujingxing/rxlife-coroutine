@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.net.Uri;
 
+import java.io.File;
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Map;
@@ -12,11 +13,13 @@ import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.functions.Consumer;
 import io.reactivex.rxjava3.plugins.RxJavaPlugins;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import okhttp3.Headers;
 import okhttp3.Response;
 import rxhttp.IRxHttp;
 import rxhttp.wrapper.OkHttpCompat;
 import rxhttp.wrapper.callback.OutputStreamFactory;
+import rxhttp.wrapper.callback.UriFactory;
 import rxhttp.wrapper.entity.ParameterizedTypeImpl;
 import rxhttp.wrapper.entity.Progress;
 import rxhttp.wrapper.parse.BitmapParser;
@@ -25,9 +28,11 @@ import rxhttp.wrapper.parse.Parser;
 import rxhttp.wrapper.parse.SimpleParser;
 import rxhttp.wrapper.parse.StreamParser;
 import rxhttp.wrapper.utils.LogUtil;
+import rxhttp.wrapper.utils.UriUtil;
 
 /**
- * 本类存放asXxx方法，如果依赖了RxJava的话
+ * 本类存放asXxx方法(需要单独依赖RxJava，并告知RxHttp依赖的RxJava版本)
+ * 如未生成，请查看 https://github.com/liujingxing/okhttp-RxHttp/wiki/FAQ
  * User: ljx
  * Date: 2020/4/11
  * Time: 18:15
@@ -101,11 +106,11 @@ public abstract class BaseRxHttp implements IRxHttp {
         Type tTypeList = ParameterizedTypeImpl.get(List.class, tType);
         return asParser(new SimpleParser<List<T>>(tTypeList));
     }
-
+    
     public final <T> Observable<Bitmap> asBitmap() {
         return asParser(new BitmapParser());
     }
-
+    
     public final Observable<Response> asOkResponse() {
         return asParser(new OkResponseParser());
     }
@@ -135,13 +140,77 @@ public abstract class BaseRxHttp implements IRxHttp {
         return asParser(StreamParser.get(destPath), scheduler, progressConsumer);
     }
     
+    public final Observable<Uri> asDownload(Context context, Uri uri) {
+        return asDownload(context, uri, null, null);   
+    }                                                                  
+        
     public final Observable<Uri> asDownload(Context context, Uri uri, Scheduler scheduler,    
                                                Consumer<Progress> progressConsumer) {            
         return asParser(StreamParser.get(context, uri), scheduler, progressConsumer);
     }                                                                                            
     
+    public final <T> Observable<T> asDownload(OutputStreamFactory<T> osFactory) {
+        return asDownload(osFactory, null, null);             
+    } 
+                                                                               
     public final <T> Observable<T> asDownload(OutputStreamFactory<T> osFactory, Scheduler scheduler,
                                                Consumer<Progress> progressConsumer) {
         return asParser(new StreamParser<T>(osFactory), scheduler, progressConsumer);
     }
+    
+    public final Observable<String> asAppendDownload(String destPath) {                    
+        return asAppendDownload(destPath, null, null);                                     
+    }                                                                                      
+                                                                                           
+    public final Observable<String> asAppendDownload(String destPath, Scheduler scheduler, 
+                                                     Consumer<Progress> progressConsumer) {
+        long fileLength = new File(destPath).length();                                     
+        setRangeHeader(fileLength, -1, true);                                              
+        return asParser(StreamParser.get(destPath), scheduler, progressConsumer);          
+    }                                                                       
+     
+    public final Observable<Uri> asAppendDownload(Context context, Uri uri) {                   
+        return asAppendDownload(context, uri, null, null);                                      
+    }                                                                                           
+                                                                                                
+    public final Observable<Uri> asAppendDownload(Context context, Uri uri, Scheduler scheduler,
+                                                  Consumer<Progress> progressConsumer) {        
+        return Observable
+            .fromCallable(() -> {
+                long length = UriUtil.length(uri, context);
+                if (length >= 0) setRangeHeader(length, -1, true);
+                return StreamParser.get(context, uri);
+            })
+            .subscribeOn(Schedulers.io())
+            .flatMap(parser -> {
+                return asParser(parser, scheduler, progressConsumer);
+            });        
+    }                                                                                           
+        
+    public final Observable<Uri> asAppendDownload(UriFactory uriFactory) {                   
+        return asAppendDownload(uriFactory, null, null);                                     
+    }                                                                                        
+                                                                                             
+    public final Observable<Uri> asAppendDownload(UriFactory uriFactory, Scheduler scheduler,
+                                                  Consumer<Progress> progressConsumer) {
+        return Observable
+            .fromCallable(() -> {
+                Uri uri = uriFactory.query();
+                StreamParser<Uri> parser;
+                if (uri != null) {
+                    long length = UriUtil.length(uri, uriFactory.getContext());
+                    if (length >= 0)
+                        setRangeHeader(length, -1, true);
+                    parser = StreamParser.get(uriFactory.getContext(), uri);
+                } else {
+                    parser = new StreamParser(uriFactory);
+                }
+                return parser;
+            })
+            .subscribeOn(Schedulers.io())
+            .flatMap(parser -> {
+                return asParser(parser, scheduler, progressConsumer);
+            });
+    }                                                                                            
+        
 }

@@ -7,6 +7,7 @@ import androidx.databinding.DataBindingUtil
 import androidx.lifecycle.rxLifeScope
 import com.example.coroutine.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
+import rxhttp.RxHttpPlugins
 import rxhttp.toDownload
 import rxhttp.wrapper.param.RxHttp
 
@@ -17,7 +18,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mBinding = DataBindingUtil.setContentView(this, R.layout.activity_main)
-        RxHttp.setDebug(true)
+        RxHttpPlugins.init(null).setDebug(true)
     }
 
     //文件下载，带进度

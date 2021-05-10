@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.lang.Class;
 import java.lang.Deprecated;
 import java.lang.Object;
+import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
 import java.lang.reflect.Type;
@@ -22,14 +23,9 @@ import okhttp3.Headers.Builder;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import okhttp3.internal.cache.DiskLruCache;
-import okhttp3.internal.concurrent.TaskRunner;
-import rxhttp.HttpSender;
 import rxhttp.RxHttpPlugins;
 import rxhttp.wrapper.cahce.CacheMode;
 import rxhttp.wrapper.cahce.CacheStrategy;
-import rxhttp.wrapper.cahce.DiskLruCacheFactory;
-import rxhttp.wrapper.callback.Function;
 import rxhttp.wrapper.callback.IConverter;
 import rxhttp.wrapper.entity.DownloadOffSize;
 import rxhttp.wrapper.entity.ParameterizedTypeImpl;
@@ -49,14 +45,6 @@ import rxhttp.wrapper.utils.LogUtil;
  */
 @SuppressWarnings("unchecked")
 public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
-  static {
-    DiskLruCacheFactory.factory = (fileSystem, directory, appVersion, valueCount, maxSize) -> {               
-        return new DiskLruCache(fileSystem, directory, appVersion, valueCount, maxSize, TaskRunner.INSTANCE); 
-    };
-  }
-
-  protected P param;
-
   private int connectTimeoutMillis;
 
   private int readTimeoutMillis;
@@ -65,11 +53,13 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
   private OkHttpClient realOkClient;
 
-  private OkHttpClient okClient = HttpSender.getOkHttpClient();
+  private OkHttpClient okClient = RxHttpPlugins.getOkHttpClient();
+
+  protected IConverter converter = RxHttpPlugins.getConverter();
 
   protected boolean isAsync = true;
 
-  protected IConverter converter = RxHttpPlugins.getConverter();
+  protected P param;
 
   public Request request;
 
@@ -77,44 +67,13 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     this.param = param;
   }
 
-  public static void setDebug(boolean debug) {
-    HttpSender.setDebug(debug);
+  public P getParam() {
+    return param;
   }
 
-  public static void init(OkHttpClient okHttpClient) {
-    HttpSender.init(okHttpClient);
-  }
-
-  public static void init(OkHttpClient okHttpClient, boolean debug) {
-    HttpSender.init(okHttpClient,debug);
-  }
-
-  public static boolean isInit() {
-    return HttpSender.isInit();
-  }
-
-  /**
-   * 设置统一数据解码/解密器，每次请求成功后会回调该接口并传入Http请求的结果
-   * 通过该接口，可以统一对数据解密，并将解密后的数据返回即可
-   * 若部分接口不需要回调该接口，发请求前，调用{@link #setDecoderEnabled(boolean)}方法设置false即可
-   */
-  public static void setResultDecoder(Function<String, String> decoder) {
-    RxHttpPlugins.setResultDecoder(decoder);
-  }
-
-  /**
-   * 设置默认的转换器
-   */
-  public static void setConverter(IConverter converter) {
-    RxHttpPlugins.setConverter(converter);
-  }
-
-  /**
-   * 设置统一公共参数回调接口,通过该接口,可添加公共参数/请求头，每次请求前会回调该接口
-   * 若部分接口不需要添加公共参数,发请求前，调用{@link #setAssemblyEnabled(boolean)}方法设置false即可
-   */
-  public static void setOnParamAssembly(Function<Param<?>, Param<?>> onParamAssembly) {
-    RxHttpPlugins.setOnParamAssembly(onParamAssembly);
+  public R setParam(P param) {
+    this.param = param;
+    return (R)this;
   }
 
   public R connectTimeout(int connectTimeout) {
@@ -154,7 +113,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
     if (param.getCacheMode() != CacheMode.ONLY_NETWORK) {                      
       if (builder == null) builder = okHttpClient.newBuilder();              
-      builder.addInterceptor(new CacheInterceptor(param.getCacheStrategy()));
+      builder.addInterceptor(new CacheInterceptor(getCacheStrategy()));
     }
                                                                             
     realOkClient = builder != null ? builder.build() : okHttpClient;
@@ -169,15 +128,6 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return disposable == null || disposable.isDisposed();
   }
 
-  public P getParam() {
-    return param;
-  }
-
-  public R setParam(P param) {
-    this.param = param;
-    return (R)this;
-  }
-
   /**
    * For example:
    *                                          
@@ -188,75 +138,75 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
    * ```                                                  
    */
   public static RxHttpNoBodyParam get(String url, Object... formatArgs) {
-    return with(Param.get(format(url, formatArgs)));
+    return new RxHttpNoBodyParam(Param.get(format(url, formatArgs)));
   }
 
   public static RxHttpNoBodyParam head(String url, Object... formatArgs) {
-    return with(Param.head(format(url, formatArgs)));
+    return new RxHttpNoBodyParam(Param.head(format(url, formatArgs)));
+  }
+
+  public static RxHttpBodyParam postBody(String url, Object... formatArgs) {
+    return new RxHttpBodyParam(Param.postBody(format(url, formatArgs)));
+  }
+
+  public static RxHttpBodyParam putBody(String url, Object... formatArgs) {
+    return new RxHttpBodyParam(Param.putBody(format(url, formatArgs)));
+  }
+
+  public static RxHttpBodyParam patchBody(String url, Object... formatArgs) {
+    return new RxHttpBodyParam(Param.patchBody(format(url, formatArgs)));
+  }
+
+  public static RxHttpBodyParam deleteBody(String url, Object... formatArgs) {
+    return new RxHttpBodyParam(Param.deleteBody(format(url, formatArgs)));
   }
 
   public static RxHttpFormParam postForm(String url, Object... formatArgs) {
-    return with(Param.postForm(format(url, formatArgs)));
+    return new RxHttpFormParam(Param.postForm(format(url, formatArgs)));
   }
 
   public static RxHttpFormParam putForm(String url, Object... formatArgs) {
-    return with(Param.putForm(format(url, formatArgs)));
+    return new RxHttpFormParam(Param.putForm(format(url, formatArgs)));
   }
 
   public static RxHttpFormParam patchForm(String url, Object... formatArgs) {
-    return with(Param.patchForm(format(url, formatArgs)));
+    return new RxHttpFormParam(Param.patchForm(format(url, formatArgs)));
   }
 
   public static RxHttpFormParam deleteForm(String url, Object... formatArgs) {
-    return with(Param.deleteForm(format(url, formatArgs)));
+    return new RxHttpFormParam(Param.deleteForm(format(url, formatArgs)));
   }
 
   public static RxHttpJsonParam postJson(String url, Object... formatArgs) {
-    return with(Param.postJson(format(url, formatArgs)));
+    return new RxHttpJsonParam(Param.postJson(format(url, formatArgs)));
   }
 
   public static RxHttpJsonParam putJson(String url, Object... formatArgs) {
-    return with(Param.putJson(format(url, formatArgs)));
+    return new RxHttpJsonParam(Param.putJson(format(url, formatArgs)));
   }
 
   public static RxHttpJsonParam patchJson(String url, Object... formatArgs) {
-    return with(Param.patchJson(format(url, formatArgs)));
+    return new RxHttpJsonParam(Param.patchJson(format(url, formatArgs)));
   }
 
   public static RxHttpJsonParam deleteJson(String url, Object... formatArgs) {
-    return with(Param.deleteJson(format(url, formatArgs)));
+    return new RxHttpJsonParam(Param.deleteJson(format(url, formatArgs)));
   }
 
   public static RxHttpJsonArrayParam postJsonArray(String url, Object... formatArgs) {
-    return with(Param.postJsonArray(format(url, formatArgs)));
+    return new RxHttpJsonArrayParam(Param.postJsonArray(format(url, formatArgs)));
   }
 
   public static RxHttpJsonArrayParam putJsonArray(String url, Object... formatArgs) {
-    return with(Param.putJsonArray(format(url, formatArgs)));
+    return new RxHttpJsonArrayParam(Param.putJsonArray(format(url, formatArgs)));
   }
 
   public static RxHttpJsonArrayParam patchJsonArray(String url, Object... formatArgs) {
-    return with(Param.patchJsonArray(format(url, formatArgs)));
+    return new RxHttpJsonArrayParam(Param.patchJsonArray(format(url, formatArgs)));
   }
 
   public static RxHttpJsonArrayParam deleteJsonArray(String url, Object... formatArgs) {
-    return with(Param.deleteJsonArray(format(url, formatArgs)));
-  }
-
-  public static RxHttpNoBodyParam with(NoBodyParam noBodyParam) {
-    return new RxHttpNoBodyParam(noBodyParam);
-  }
-
-  public static RxHttpFormParam with(FormParam formParam) {
-    return new RxHttpFormParam(formParam);
-  }
-
-  public static RxHttpJsonParam with(JsonParam jsonParam) {
-    return new RxHttpJsonParam(jsonParam);
-  }
-
-  public static RxHttpJsonArrayParam with(JsonArrayParam jsonArrayParam) {
-    return new RxHttpJsonArrayParam(jsonArrayParam);
+    return new RxHttpJsonArrayParam(Param.deleteJsonArray(format(url, formatArgs)));
   }
 
   public R setUrl(String url) {
@@ -264,20 +214,53 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return (R)this;
   }
 
-  public R add(String key, Object value) {
-    param.add(key,value);
+  public R removeAllQuery() {
+    param.removeAllQuery();
     return (R)this;
   }
 
-  public R add(String key, Object value, boolean isAdd) {
-    if(isAdd) {
-      param.add(key,value);
-    }
+  public R removeAllQuery(String key) {
+    param.removeAllQuery(key);
     return (R)this;
   }
 
-  public R addAll(Map<String, ?> map) {
-    param.addAll(map);
+  public R addQuery(String key, Object value) {
+    param.addQuery(key,value);
+    return (R)this;
+  }
+
+  public R setQuery(String key, Object value) {
+    param.setQuery(key,value);
+    return (R)this;
+  }
+
+  public R addEncodedQuery(String key, Object value) {
+    param.addEncodedQuery(key,value);
+    return (R)this;
+  }
+
+  public R setEncodedQuery(String key, Object value) {
+    param.setEncodedQuery(key,value);
+    return (R)this;
+  }
+
+  public R addAllQuery(Map<String, ?> map) {
+    param.addAllQuery(map);
+    return (R)this;
+  }
+
+  public R setAllQuery(Map<String, ?> map) {
+    param.setAllQuery(map);
+    return (R)this;
+  }
+
+  public R addAllEncodedQuery(Map<String, ?> map) {
+    param.addAllEncodedQuery(map);
+    return (R)this;
+  }
+
+  public R setAllEncodedQuery(Map<String, ?> map) {
+    param.setAllEncodedQuery(map);
     return (R)this;
   }
 
@@ -290,6 +273,22 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     if(isAdd) {
       param.addHeader(line);
     }
+    return (R)this;
+  }
+
+  /**
+   * Add a header with the specified name and value. Does validation of header names, allowing non-ASCII values.
+   */
+  public R addNonAsciiHeader(String key, String value) {
+    param.addNonAsciiHeader(key,value);
+    return (R)this;
+  }
+
+  /**
+   * Set a header with the specified name and value. Does validation of header names, allowing non-ASCII values.
+   */
+  public R setNonAsciiHeader(String key, String value) {
+    param.setNonAsciiHeader(key,value);
     return (R)this;
   }
 
@@ -317,6 +316,11 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
 
   public R setHeader(String key, String value) {
     param.setHeader(key,value);
+    return (R)this;
+  }
+
+  public R setAllHeader(Map<String, String> headers) {
+    param.setAllHeader(headers);
     return (R)this;
   }
 
@@ -453,6 +457,7 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
     return execute(new SimpleParser<T>(type));
   }
 
+  @Override
   public final Call newCall() {
     Request request = buildRequest();
     OkHttpClient okClient = getOkHttpClient();
@@ -460,11 +465,14 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
   }
 
   public final Request buildRequest() {
+    boolean debug = LogUtil.isDebug();    
     if (request == null) {
         doOnStart();
         request = param.buildRequest();
+        if (debug) 
+            LogUtil.log(request, getOkHttpClient().cookieJar());
     }
-    if (LogUtil.isDebug()) {
+    if (debug) {
         request = request.newBuilder()
             .tag(LogTime.class, new LogTime())
             .build();
@@ -512,6 +520,13 @@ public class RxHttp<P extends Param, R extends RxHttp> extends BaseRxHttp {
    */
   private R setConverter(P param) {
     param.tag(IConverter.class,converter);
+    return (R)this;
+  }
+
+  public R setOkClient(OkHttpClient okClient) {
+    if (okClient == null) 
+        throw new IllegalArgumentException("okClient can not be null");
+    this.okClient = okClient;
     return (R)this;
   }
 
